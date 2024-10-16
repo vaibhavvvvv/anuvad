@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 
-import StructuredData from './StructuredData'
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -16,9 +15,25 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Anuvad",
-  description: "Extract and translate text from PDF, images, and plain text files from Hindi to English.",
-};
+  title: 'Anuvad - Hindi to English Translation Tool | Extract and Translate Text',
+  description: 'Anuvad is a free online tool to extract and translate text from PDF, images, and plain text files from Hindi to English. Upload your file and get instant translations.',
+  keywords: 'Hindi translation, English translation, PDF translation, image translation, OCR, text extraction',
+  openGraph: {
+    title: 'Anuvad - Hindi to English Translation Tool',
+    description: 'Extract and translate text from PDF, images, and plain text files from Hindi to English with Anuvad.',
+    url: 'https://your-domain.com',
+    siteName: 'Anuvad',
+    images: [
+      {
+        url: 'https://your-domain.com/og-image.jpg',
+        width: 1200,
+        height: 630,
+      },
+    ],
+    locale: 'en_US',
+    type: 'website',
+  },
+}
 
 export default function RootLayout({
   children,
@@ -31,7 +46,6 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         {children}
-        <StructuredData />
       </body>
     </html>
   );
