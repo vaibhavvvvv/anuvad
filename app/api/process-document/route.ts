@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
 }
 
 async function translateText(text: string, sourceLang: string = 'hi', targetLang: string = 'en') {
-  const chunkSize = 100; // Google Translate API typically allows up to 2000 characters, but we'll use 1000 to be safe
+  const chunkSize = 100;
   const chunks = [];
 
   for (let i = 0; i < text.length; i += chunkSize) {
@@ -79,7 +79,7 @@ async function translateText(text: string, sourceLang: string = 'hi', targetLang
     const data = await response.json();
 
     // The translation is in the first element of the first array
-    return data[0].map((item: any[]) => item[0]).join(' ');
+    return data[0].map((item: [string, string]) => item[0]).join(' ');
   }));
 
   return translatedChunks.join(' ');
