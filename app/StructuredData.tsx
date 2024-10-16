@@ -7,7 +7,7 @@ export default function StructuredData() {
         "@context": "https://schema.org",
         "@type": "WebApplication",
         "name": "Anuvad",
-        "url": "https://your-domain.com",
+        "url": "https://anuvad.vercel.app/",
         "description": "Extract and translate text from PDF, images, and plain text files from Hindi to English.",
         "applicationCategory": "TranslationApplication",
         "operatingSystem": "All",

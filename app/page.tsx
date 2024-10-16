@@ -54,12 +54,12 @@ export default function Home() {
         <meta name="description" content="Anuvad is a free online tool to extract and translate text from PDF, images, and plain text files from Hindi to English. Upload your file and get instant translations." />
         <meta name="keywords" content="Hindi translation, English translation, PDF translation, image translation, OCR, text extraction" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link rel="canonical" href="https://your-domain.com" />
+        <link rel="canonical" href="https://anuvad.vercel.app/" />
         <meta property="og:title" content="Anuvad - Hindi to English Translation Tool" />
         <meta property="og:description" content="Extract and translate text from PDF, images, and plain text files from Hindi to English with Anuvad." />
         <meta property="og:type" content="website" />
-        <meta property="og:url" content="https://your-domain.com" />
-        <meta property="og:image" content="https://your-domain.com/og-image.jpg" />
+        <meta property="og:url" content="https://anuvad.vercel.app/" />
+        <meta property="og:image" content="https://anuvad.vercel.app/og-image.jpg" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
 

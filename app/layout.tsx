@@ -21,11 +21,11 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Anuvad - Hindi to English Translation Tool',
     description: 'Extract and translate text from PDF, images, and plain text files from Hindi to English with Anuvad.',
-    url: 'https://your-domain.com',
+    url: 'https://anuvad.vercel.app/',
     siteName: 'Anuvad',
     images: [
       {
-        url: 'https://your-domain.com/og-image.jpg',
+        url: '/og-image.jpg',
         width: 1200,
         height: 630,
       },
