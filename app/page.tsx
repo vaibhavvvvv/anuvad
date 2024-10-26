@@ -29,6 +29,9 @@ export default function Home() {
       const response = await fetch('/api/process-document', {
         method: 'POST',
         body: formData,
+        headers: {
+          'Accept': 'application/json',
+        },
       });
       
       if (!response.ok) {

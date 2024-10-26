@@ -3,6 +3,12 @@ import pdf from 'pdf-parse';
 import { createWorker } from 'tesseract.js';
 import { fileTypeFromBuffer } from 'file-type';
 
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
+
 async function extractTextFromPdf(dataBuffer: Buffer) {
   try {
     const data = await pdf(dataBuffer);
@@ -27,9 +33,13 @@ async function performOcr(dataBuffer: Buffer) {
 }
 
 export async function POST(request: NextRequest) {
+  console.log('POST request received');
+
   try {
     const formData = await request.formData();
+    console.log('FormData parsed');
     const file = formData.get('file') as File;
+    console.log('File retrieved:', file ? file.name : 'No file');
 
     if (!file) {
       return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
@@ -56,10 +66,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ 
       originalText: text.trim(),
       translatedText: translatedText
+    }, {
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      },
     });
   } catch (error) {
     console.error('Error processing document:', error);
-    return NextResponse.json({ error: 'Error processing document' }, { status: 500 });
+    return NextResponse.json({ error: 'Error processing document' }, { 
+      status: 500,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      },
+    });
   }
 }
 
@@ -83,4 +106,9 @@ async function translateText(text: string, sourceLang: string = 'hi', targetLang
   }));
 
   return translatedChunks.join(' ');
+}
+
+// Add this new function to handle OPTIONS requests
+export async function OPTIONS() {
+  return NextResponse.json({}, { status: 200 });
 }
