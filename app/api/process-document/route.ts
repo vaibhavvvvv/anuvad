@@ -3,11 +3,9 @@ import pdf from 'pdf-parse';
 import { createWorker } from 'tesseract.js';
 import { fileTypeFromBuffer } from 'file-type';
 
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
+// Add this new configuration
+export const dynamic = 'force-dynamic';
+export const runtime = 'edge'; // Use 'nodejs' if you need Node.js runtime
 
 async function extractTextFromPdf(dataBuffer: Buffer) {
   try {
@@ -110,5 +108,12 @@ async function translateText(text: string, sourceLang: string = 'hi', targetLang
 
 // Add this new function to handle OPTIONS requests
 export async function OPTIONS() {
-  return NextResponse.json({}, { status: 200 });
+  return NextResponse.json({}, { 
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    },
+  });
 }
