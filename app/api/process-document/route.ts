@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import pdf from 'pdf-parse';
 import { createWorker } from 'tesseract.js';
 import { fileTypeFromBuffer } from 'file-type';
 
 export const dynamic = 'force-dynamic';
-export const runtime = 'nodejs'; // Changed from 'edge' to 'nodejs'
+export const runtime = 'nodejs';
 
 async function extractTextFromPdf(dataBuffer: Buffer) {
   try {
-    const data = await pdf(dataBuffer);
+    const pdf = await import('pdf-parse');
+    const data = await pdf.default(dataBuffer);
     return data.text;
   } catch (error) {
     console.error('PDF extraction failed:', error);
