@@ -3,9 +3,8 @@ import pdf from 'pdf-parse';
 import { createWorker } from 'tesseract.js';
 import { fileTypeFromBuffer } from 'file-type';
 
-// Add this new configuration
 export const dynamic = 'force-dynamic';
-export const runtime = 'edge'; // Use 'nodejs' if you need Node.js runtime
+export const runtime = 'nodejs'; // Changed from 'edge' to 'nodejs'
 
 async function extractTextFromPdf(dataBuffer: Buffer) {
   try {
@@ -106,7 +105,6 @@ async function translateText(text: string, sourceLang: string = 'hi', targetLang
   return translatedChunks.join(' ');
 }
 
-// Add this new function to handle OPTIONS requests
 export async function OPTIONS() {
   return NextResponse.json({}, { 
     status: 200,
