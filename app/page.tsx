@@ -77,6 +77,7 @@ export default function Home() {
         headers: {
           'Accept': 'application/json',
         },
+        mode: 'cors', 
       });
 
       if (!response.ok) {
@@ -163,7 +164,7 @@ export default function Home() {
                   onChange={handleSourceLanguageChange}
                   className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-slate-400 focus:border-slate-400 sm:text-sm rounded-md bg-gray-800 text-slate-400"
                 >
-                  <option value="auto">Auto-detect</option>
+                  <option value="auto">Select Language</option>
                   {languages.map((lang) => (
                     <option key={lang.code} value={lang.code}>{lang.name}</option>
                   ))}
