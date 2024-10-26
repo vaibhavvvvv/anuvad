@@ -25,6 +25,7 @@ async function performOcr(dataBuffer: Buffer, lang: string) {
       await worker.reinitialize(lang);
     } catch (langError) {
       console.warn(`Language ${lang} not available for OCR. Falling back to English.`);
+      console.warn(langError);
       await worker.load('eng');
       await worker.reinitialize('eng');
     }
