@@ -20,6 +20,21 @@ const languages = [
   { code: 'as', name: 'Assamese' },
 ];
 
+const FormattedText = ({ text }: { text: string }) => {
+  const parts = text.split(/(\*\*.*?\*\*)/g);
+  
+  return (
+    <span className="whitespace-pre-wrap">
+      {parts.map((part, index) => {
+        if (part.startsWith('**') && part.endsWith('**')) {
+          return <strong key={index} className="font-bold">{part.slice(2, -2)}</strong>;
+        }
+        return <span key={index}>{part}</span>;
+      })}
+    </span>
+  );
+};
+
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -28,6 +43,8 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [sourceLanguage, setSourceLanguage] = useState('auto');
   const [targetLanguage, setTargetLanguage] = useState('en');
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedText, setEditedText] = useState('');
 
   useEffect(() => {
     if (!file) {
@@ -86,26 +103,64 @@ export default function Home() {
       const data = await response.json();
       setOriginalText(data.originalText);
       setTranslatedText(data.translatedText);
+      setEditedText(data.translatedText);
 
-      if (data.translatedPdf) {
-        const pdfBlob = new Blob(
-          [Buffer.from(data.translatedPdf, 'base64')],
-          { type: 'application/pdf' }
-        );
-
-        const downloadLink = document.createElement('a');
-        downloadLink.href = URL.createObjectURL(pdfBlob);
-        downloadLink.download = 'translated-document.pdf';
-        downloadLink.click();
-
-        URL.revokeObjectURL(downloadLink.href);
-      }
     } catch (error) {
       console.error('Error processing document:', error);
       setOriginalText(`Error processing document: ${error instanceof Error ? error.message : 'Unknown error'}`);
       setTranslatedText('');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleEdit = () => {
+    setIsEditing(true);
+    setEditedText(translatedText);
+  };
+
+  const handleSaveEdit = () => {
+    setTranslatedText(editedText);
+    setIsEditing(false);
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setEditedText('');
+  };
+
+  const handleDownloadPDF = async () => {
+    try {
+      const formData = new FormData();
+      formData.append('file', file!);
+      formData.append('translatedText', isEditing ? editedText : translatedText);
+
+      const response = await fetch('/api/generate-pdf', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate PDF');
+      }
+
+      const data = await response.json();
+      
+      // Create and download the PDF
+      const pdfBlob = new Blob(
+        [Buffer.from(data.translatedPdf, 'base64')],
+        { type: 'application/pdf' }
+      );
+      const downloadUrl = URL.createObjectURL(pdfBlob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = 'translated-document.pdf';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(downloadUrl);
+    } catch (error) {
+      console.error('Error generating PDF:', error);
     }
   };
 
@@ -217,11 +272,69 @@ export default function Home() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="bg-gray-900 p-6 rounded-lg shadow-lg border border-slate-400">
                 <h3 className="text-xl font-semibold mb-4 text-slate-300">Original Text:</h3>
-                <p className="whitespace-pre-wrap text-slate-200">{originalText}</p>
+                <p className="whitespace-pre-wrap text-slate-200 leading-relaxed">{originalText}</p>
               </div>
               <div className="bg-gray-900 p-6 rounded-lg shadow-lg border border-slate-400">
-                <h3 className="text-xl font-semibold mb-4 text-slate-300">Translated Text:</h3>
-                <p className="whitespace-pre-wrap text-slate-100">{translatedText}</p>
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-xl font-semibold text-slate-300">Translated Text:</h3>
+                  <div className="flex space-x-2">
+                    {isEditing ? (
+                      <>
+                        <button
+                          onClick={handleSaveEdit}
+                          className="px-3 py-1.5 bg-emerald-600 text-white text-sm rounded-md hover:bg-emerald-500 transition-colors duration-200 flex items-center"
+                        >
+                          <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                          </svg>
+                          Save
+                        </button>
+                        <button
+                          onClick={handleCancelEdit}
+                          className="px-3 py-1.5 bg-rose-600 text-white text-sm rounded-md hover:bg-rose-500 transition-colors duration-200 flex items-center"
+                        >
+                          <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={handleEdit}
+                          className="px-3 py-1.5 bg-slate-700 text-white text-sm rounded-md hover:bg-slate-600 transition-colors duration-200 flex items-center"
+                        >
+                          <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                          Edit
+                        </button>
+                        <button
+                          onClick={handleDownloadPDF}
+                          className="px-3 py-1.5 bg-slate-700 text-white text-sm rounded-md hover:bg-slate-600 transition-colors duration-200 flex items-center"
+                        >
+                          <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                          </svg>
+                          Download PDF
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+                {isEditing ? (
+                  <textarea
+                    value={editedText}
+                    onChange={(e) => setEditedText(e.target.value)}
+                    className="w-full h-[calc(100%-2rem)] min-h-[300px] p-4 bg-gray-800 text-slate-200 rounded-md border border-slate-600 focus:border-slate-400 focus:ring-1 focus:ring-slate-400 transition-colors duration-200 resize-none font-mono text-sm leading-relaxed"
+                    placeholder="Edit translated text here... Use **text** for bold formatting"
+                  />
+                ) : (
+                  <div className="text-slate-200 leading-relaxed">
+                    <FormattedText text={translatedText} />
+                  </div>
+                )}
               </div>
             </div>
           </div>
