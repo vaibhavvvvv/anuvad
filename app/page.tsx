@@ -77,7 +77,6 @@ export default function Home() {
         headers: {
           'Accept': 'application/json',
         },
-        mode: 'cors', 
       });
 
       if (!response.ok) {
@@ -87,6 +86,20 @@ export default function Home() {
       const data = await response.json();
       setOriginalText(data.originalText);
       setTranslatedText(data.translatedText);
+
+      if (data.translatedPdf) {
+        const pdfBlob = new Blob(
+          [Buffer.from(data.translatedPdf, 'base64')],
+          { type: 'application/pdf' }
+        );
+
+        const downloadLink = document.createElement('a');
+        downloadLink.href = URL.createObjectURL(pdfBlob);
+        downloadLink.download = 'translated-document.pdf';
+        downloadLink.click();
+
+        URL.revokeObjectURL(downloadLink.href);
+      }
     } catch (error) {
       console.error('Error processing document:', error);
       setOriginalText(`Error processing document: ${error instanceof Error ? error.message : 'Unknown error'}`);

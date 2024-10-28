@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import pdf from 'pdf-parse';
 import { createWorker } from 'tesseract.js';
 import { fileTypeFromBuffer } from 'file-type';
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -20,15 +21,8 @@ async function performOcr(dataBuffer: Buffer, lang: string) {
   const worker = await createWorker();
 
   try {
-    try {
-      await worker.load(lang);
-      await worker.reinitialize(lang);
-    } catch (langError) {
-      console.warn(`Language ${lang} not available for OCR. Falling back to English.`);
-      console.warn(langError);
-      await worker.load('eng');
-      await worker.reinitialize('eng');
-    }
+    await worker.load();
+    await worker.reinitialize(lang);
 
     const { data: { text } } = await worker.recognize(dataBuffer);
     await worker.terminate();
@@ -40,6 +34,148 @@ async function performOcr(dataBuffer: Buffer, lang: string) {
   }
 }
 
+async function translateText(text: string, sourceLang: string, targetLang: string) {
+  const apiKey = process.env.NEXT_PUBLIC_TRANSLATION_API_KEY;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
+
+  const prompt = `Translate the following text from ${sourceLang} to ${targetLang}: ${text}`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }]
+    })
+  });
+
+  const data = await response.json();
+
+  if (data && data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0]) {
+    const translatedText = data.candidates[0].content.parts[0].text;
+    return translatedText.trim();
+  } else {
+    console.error('Unexpected response structure:', data);
+    throw new Error('Translation failed due to unexpected response structure');
+  }
+}
+
+async function createTranslatedPdf(originalBuffer: Buffer, translatedText: string) {
+  const pdfDoc = await PDFDocument.load(originalBuffer);
+
+  const regularFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+  const fontSize = 12;
+  const lineHeight = 16;
+  const margin = 50;
+
+  let currentPageIndex = 0;
+  let currentPage = pdfDoc.getPages()[currentPageIndex];
+  let yPosition = currentPage.getSize().height - margin;
+  const maxWidth = currentPage.getSize().width - (2 * margin);
+
+  // Clear the existing text
+  pdfDoc.getPages().forEach((page) => {
+    const { width, height } = page.getSize();
+    page.drawRectangle({
+      x: 0,
+      y: 0,
+      width,
+      height,
+      color: rgb(1, 1, 1),
+    });
+  });
+
+  // Process each line
+  const lines = translatedText.split('\n');
+  for (const line of lines) {
+    if (line.trim() === '') {
+      yPosition -= lineHeight;
+      continue;
+    }
+
+    let xPosition = margin;
+    const parts = line.split(/(\*\*.*?\*\*)/g);
+
+    for (const part of parts) {
+      if (part === '') continue;
+
+      const isBold = part.startsWith('**') && part.endsWith('**');
+      const font = isBold ? boldFont : regularFont;
+      const text = isBold ? part.slice(2, -2) : part;
+      
+      // Split text into words
+      const words = text.split(' ');
+      let currentWord = '';
+
+      for (const word of words) {
+        const testLine = currentWord + (currentWord ? ' ' : '') + word;
+        const testWidth = font.widthOfTextAtSize(testLine, fontSize);
+
+        if (xPosition + testWidth > currentPage.getSize().width - margin) {
+          // Draw current accumulated text before moving to next line
+          if (currentWord) {
+            currentPage.drawText(currentWord, {
+              x: xPosition,
+              y: yPosition,
+              size: fontSize,
+              font: font,
+              color: rgb(0, 0, 0),
+            });
+          }
+
+          // Move to next line
+          yPosition -= lineHeight;
+          xPosition = margin;
+          currentWord = word;
+
+          // Check if we need a new page
+          if (yPosition < margin) {
+            currentPageIndex++;
+            if (currentPageIndex < pdfDoc.getPages().length) {
+              currentPage = pdfDoc.getPages()[currentPageIndex];
+            } else {
+              currentPage = pdfDoc.addPage();
+            }
+            yPosition = currentPage.getSize().height - margin;
+          }
+        } else {
+          currentWord = testLine;
+        }
+      }
+
+      // Draw remaining text
+      if (currentWord) {
+        currentPage.drawText(currentWord, {
+          x: xPosition,
+          y: yPosition,
+          size: fontSize,
+          font: font,
+          color: rgb(0, 0, 0),
+        });
+        xPosition += font.widthOfTextAtSize(currentWord + ' ', fontSize);
+      }
+    }
+
+    // Move to next line after processing all parts
+    yPosition -= lineHeight;
+
+    // Check if we need a new page
+    if (yPosition < margin) {
+      currentPageIndex++;
+      if (currentPageIndex < pdfDoc.getPages().length) {
+        currentPage = pdfDoc.getPages()[currentPageIndex];
+      } else {
+        currentPage = pdfDoc.addPage();
+      }
+      yPosition = currentPage.getSize().height - margin;
+    }
+  }
+
+  const pdfBytes = await pdfDoc.save();
+  return pdfBytes;
+}
+
 export async function POST(request: NextRequest) {
   const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
@@ -47,7 +183,6 @@ export async function POST(request: NextRequest) {
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
   };
 
-  // Handle preflight request
   if (request.method === 'OPTIONS') {
     return new NextResponse(null, { status: 200, headers: corsHeaders });
   }
@@ -74,55 +209,28 @@ export async function POST(request: NextRequest) {
       const ocrLang = sourceLanguage !== 'auto' ? mapLanguageToTesseract(sourceLanguage) : 'eng';
       text = await performOcr(buffer, ocrLang);
     } else {
-      // Assume it's a text file
       text = buffer.toString('utf8');
     }
 
-    // Translate the extracted text
     const translatedText = await translateText(text.trim(), sourceLanguage, targetLanguage);
+    const translatedPdfBytes = await createTranslatedPdf(buffer, translatedText);
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       originalText: text.trim(),
-      translatedText: translatedText
+      translatedText: translatedText,
+      translatedPdf: Buffer.from(translatedPdfBytes).toString('base64')
     }, {
       headers: corsHeaders,
     });
   } catch (error) {
     console.error('Error processing document:', error);
-    return NextResponse.json({ error: 'Error processing document' }, { 
+    return NextResponse.json({ error: 'Error processing document' }, {
       status: 500,
       headers: corsHeaders,
     });
   }
 }
 
-async function translateText(text: string, sourceLang: string, targetLang: string) {
-  const apiKey = process.env.NEXT_PUBLIC_TRANSLATION_API_KEY;
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
-
-  const prompt = `Translate the following text from ${sourceLang} to ${targetLang}: ${text}`;
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }]
-    })
-  });
-
-  const data = await response.json();
-
-  // Parse the response to extract the translated text
-  if (data && data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0]) {
-    const translatedText = data.candidates[0].content.parts[0].text;
-    return translatedText.trim(); // Trim to remove any extra whitespace or newlines
-  } else {
-    console.error('Unexpected response structure:', data);
-    throw new Error('Translation failed due to unexpected response structure');
-  }
-}
-
-// Helper function to map language codes to Tesseract-compatible codes
 function mapLanguageToTesseract(lang: string): string {
   const mapping: { [key: string]: string } = {
     'en': 'eng',
@@ -139,5 +247,5 @@ function mapLanguageToTesseract(lang: string): string {
     'or': 'ori',
     'as': 'asm'
   };
-  return mapping[lang] || 'eng'; // Default to English if no mapping found
+  return mapping[lang] || 'eng';
 }
