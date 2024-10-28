@@ -47,7 +47,7 @@ async function createTranslatedPdf(originalBuffer: Buffer, translatedText: strin
     // Filter unsupported characters
     const filteredLine = filterUnsupportedCharacters(line);
 
-    let xPosition = margin;
+    const xPosition = margin;
     const parts = filteredLine.split(/(\*\*.*?\*\*)/g);
 
     for (const part of parts) {
