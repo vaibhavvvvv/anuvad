@@ -72,7 +72,7 @@ async function createTranslatedPdf(originalBuffer: Buffer, translatedText: strin
   let currentPageIndex = 0;
   let currentPage = pdfDoc.getPages()[currentPageIndex];
   let yPosition = currentPage.getSize().height - margin;
-  const maxWidth = currentPage.getSize().width - (2 * margin);
+  // const maxWidth = currentPage.getSize().width - (2 * margin);
 
   // Clear the existing text
   pdfDoc.getPages().forEach((page) => {
