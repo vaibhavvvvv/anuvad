@@ -21,9 +21,7 @@ async function performOcr(dataBuffer: Buffer, lang: string) {
   const worker = await createWorker();
 
   try {
-    await worker.load();
     await worker.reinitialize(lang);
-
     const { data: { text } } = await worker.recognize(dataBuffer);
     await worker.terminate();
     return text;
@@ -34,18 +32,33 @@ async function performOcr(dataBuffer: Buffer, lang: string) {
   }
 }
 
-async function translateText(text: string, sourceLang: string, targetLang: string) {
+async function translateText(content: Buffer, sourceLang: string, targetLang: string, mimeType: string) {
   const apiKey = process.env.NEXT_PUBLIC_TRANSLATION_API_KEY;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
 
-  const prompt = `Translate the following text from ${sourceLang} to ${targetLang}: ${text}`;
+  // Convert buffer to base64
+  const base64Content = content.toString('base64');
+  
+  const requestBody = {
+    contents: [{
+      parts: [
+        {
+          text: `Translate this content from ${sourceLang} to ${targetLang}. Don't add any comments or conclusion. use bold tags wherever it looks necessary.`
+        },
+        {
+          inline_data: {
+            mime_type: mimeType,
+            data: base64Content
+          }
+        }
+      ]
+    }]
+  };
 
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }]
-    })
+    body: JSON.stringify(requestBody)
   });
 
   const data = await response.json();
@@ -59,121 +72,75 @@ async function translateText(text: string, sourceLang: string, targetLang: strin
   }
 }
 
-async function createTranslatedPdf(originalBuffer: Buffer, translatedText: string) {
-  const pdfDoc = await PDFDocument.load(originalBuffer);
+async function createTranslatedPdf(originalBuffer: Buffer, translatedText: string, mimeType: string) {
+  try {
+    const pdfDoc = mimeType === 'application/pdf' 
+      ? await PDFDocument.load(originalBuffer)
+      : await PDFDocument.create();
 
-  const regularFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const regularFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-  const fontSize = 12;
-  const lineHeight = 16;
-  const margin = 50;
+    if (mimeType !== 'application/pdf') {
+      pdfDoc.addPage([612, 792]); // Standard US Letter size
+    }
 
-  let currentPageIndex = 0;
-  let currentPage = pdfDoc.getPages()[currentPageIndex];
-  let yPosition = currentPage.getSize().height - margin;
-  // const maxWidth = currentPage.getSize().width - (2 * margin);
+    const fontSize = 12;
+    const lineHeight = 16;
+    const margin = 50;
 
-  // Clear the existing text
-  pdfDoc.getPages().forEach((page) => {
-    const { width, height } = page.getSize();
-    page.drawRectangle({
+    const pages = pdfDoc.getPages();
+    const currentPage = pages[0];
+    let yPosition = currentPage.getSize().height - margin;
+
+    // Clear the page
+    const { width, height } = currentPage.getSize();
+    currentPage.drawRectangle({
       x: 0,
       y: 0,
       width,
       height,
       color: rgb(1, 1, 1),
     });
-  });
 
-  // Process each line
-  const lines = translatedText.split('\n');
-  for (const line of lines) {
-    if (line.trim() === '') {
-      yPosition -= lineHeight;
-      continue;
-    }
-
-    let xPosition = margin;
-    const parts = line.split(/(\*\*.*?\*\*)/g);
-
-    for (const part of parts) {
-      if (part === '') continue;
-
-      const isBold = part.startsWith('**') && part.endsWith('**');
-      const font = isBold ? boldFont : regularFont;
-      const text = isBold ? part.slice(2, -2) : part;
-      
-      // Split text into words
-      const words = text.split(' ');
-      let currentWord = '';
-
-      for (const word of words) {
-        const testLine = currentWord + (currentWord ? ' ' : '') + word;
-        const testWidth = font.widthOfTextAtSize(testLine, fontSize);
-
-        if (xPosition + testWidth > currentPage.getSize().width - margin) {
-          // Draw current accumulated text before moving to next line
-          if (currentWord) {
-            currentPage.drawText(currentWord, {
-              x: xPosition,
-              y: yPosition,
-              size: fontSize,
-              font: font,
-              color: rgb(0, 0, 0),
-            });
-          }
-
-          // Move to next line
-          yPosition -= lineHeight;
-          xPosition = margin;
-          currentWord = word;
-
-          // Check if we need a new page
-          if (yPosition < margin) {
-            currentPageIndex++;
-            if (currentPageIndex < pdfDoc.getPages().length) {
-              currentPage = pdfDoc.getPages()[currentPageIndex];
-            } else {
-              currentPage = pdfDoc.addPage();
-            }
-            yPosition = currentPage.getSize().height - margin;
-          }
-        } else {
-          currentWord = testLine;
-        }
+    const lines = translatedText.split('\n');
+    for (const line of lines) {
+      if (yPosition < margin) {
+        // Add new page if needed
+        const newPage = pdfDoc.addPage([width, height]);
+        yPosition = newPage.getSize().height - margin;
       }
 
-      // Draw remaining text
-      if (currentWord) {
-        currentPage.drawText(currentWord, {
-          x: xPosition,
+      if (line.trim() !== '') {
+        currentPage.drawText(line, {
+          x: margin,
           y: yPosition,
           size: fontSize,
-          font: font,
+          font: regularFont,
           color: rgb(0, 0, 0),
         });
-        xPosition += font.widthOfTextAtSize(currentWord + ' ', fontSize);
       }
+      yPosition -= lineHeight;
     }
 
-    // Move to next line after processing all parts
-    yPosition -= lineHeight;
+    return await pdfDoc.save();
+  } catch (error) {
+    console.error('Error creating PDF:', error);
+    // Create a simple PDF with just the text if the original conversion fails
+    const fallbackDoc = await PDFDocument.create();
+    const page = fallbackDoc.addPage([612, 792]);
+    const font = await fallbackDoc.embedFont(StandardFonts.Helvetica);
+    
+    page.drawText(translatedText, {
+      x: 50,
+      y: 750,
+      size: 12,
+      font: font,
+      color: rgb(0, 0, 0),
+    });
 
-    // Check if we need a new page
-    if (yPosition < margin) {
-      currentPageIndex++;
-      if (currentPageIndex < pdfDoc.getPages().length) {
-        currentPage = pdfDoc.getPages()[currentPageIndex];
-      } else {
-        currentPage = pdfDoc.addPage();
-      }
-      yPosition = currentPage.getSize().height - margin;
-    }
+    return await fallbackDoc.save();
   }
-
-  const pdfBytes = await pdfDoc.save();
-  return pdfBytes;
 }
 
 export async function POST(request: NextRequest) {
@@ -199,24 +166,38 @@ export async function POST(request: NextRequest) {
 
     const buffer = Buffer.from(await file.arrayBuffer());
     const fileTypeResult = await fileTypeFromBuffer(buffer);
-    const mimeType = fileTypeResult ? fileTypeResult.mime : 'text/plain';
+    const mimeType = fileTypeResult ? fileTypeResult.mime : file.type || 'text/plain';
 
     let text = '';
+    let translatedText = '';
 
-    if (mimeType === 'application/pdf') {
-      text = await extractTextFromPdf(buffer);
-    } else if (mimeType.startsWith('image/')) {
-      const ocrLang = sourceLanguage !== 'auto' ? mapLanguageToTesseract(sourceLanguage) : 'eng';
-      text = await performOcr(buffer, ocrLang);
+    // Handle both PDFs and images directly through Gemini API
+    if (mimeType === 'application/pdf' || mimeType.startsWith('image/')) {
+      translatedText = await translateText(buffer, sourceLanguage, targetLanguage, mimeType);
+      
+      // Extract original text for display 
+      if (mimeType === 'application/pdf') {
+        text = await extractTextFromPdf(buffer);
+      } else {
+        // For images, use OCR to show original text
+        const ocrLang = sourceLanguage !== 'auto' ? mapLanguageToTesseract(sourceLanguage) : 'eng';
+        text = await performOcr(buffer, ocrLang);
+      }
     } else {
+      // Handle plain text files
       text = buffer.toString('utf8');
+      translatedText = await translateText(
+        Buffer.from(text), 
+        sourceLanguage, 
+        targetLanguage, 
+        'text/plain'
+      );
     }
 
-    const translatedText = await translateText(text.trim(), sourceLanguage, targetLanguage);
-    const translatedPdfBytes = await createTranslatedPdf(buffer, translatedText);
+    const translatedPdfBytes = await createTranslatedPdf(buffer, translatedText, mimeType);
 
     return NextResponse.json({
-      originalText: text.trim(),
+      originalText: text,
       translatedText: translatedText,
       translatedPdf: Buffer.from(translatedPdfBytes).toString('base64')
     }, {
@@ -224,7 +205,9 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Error processing document:', error);
-    return NextResponse.json({ error: 'Error processing document' }, {
+    return NextResponse.json({ 
+      error: error instanceof Error ? error.message : 'Error processing document'
+    }, {
       status: 500,
       headers: corsHeaders,
     });
