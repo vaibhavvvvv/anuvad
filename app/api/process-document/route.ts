@@ -79,7 +79,7 @@ async function createTranslatedPdf(originalBuffer: Buffer, translatedText: strin
       : await PDFDocument.create();
 
     const regularFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    // const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
     if (mimeType !== 'application/pdf') {
       pdfDoc.addPage([612, 792]); // Standard US Letter size
